@@ -26,6 +26,7 @@ Now you can simply run:
 sudo paqet              # Open main menu
 sudo paqet --status     # List all tunnels
 sudo paqet --manage     # Open management menu
+sudo paqet --update-core # Update paqet core to latest release
 sudo paqet --help       # Show all options
 ```
 

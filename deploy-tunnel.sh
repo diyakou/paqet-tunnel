@@ -135,6 +135,20 @@ resolve_paqet_binary() {
     return 1
 }
 
+# Get latest paqet release tag from GitHub API
+get_latest_paqet_version() {
+    local api_url="https://api.github.com/repos/hanselime/paqet/releases/latest"
+    local version=""
+
+    if command -v curl &> /dev/null; then
+        version=$(curl -fsSL "$api_url" 2>/dev/null | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+    elif command -v wget &> /dev/null; then
+        version=$(wget -qO- "$api_url" 2>/dev/null | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+    fi
+
+    echo "$version"
+}
+
 # Normalize a port value (handles ip:port input)
 normalize_port() {
     local input="$1"
@@ -187,6 +201,7 @@ install_to_bin() {
         echo "  sudo paqet              - Open main menu"
         echo "  sudo paqet --status     - List all tunnels"
         echo "  sudo paqet --manage     - Open management menu"
+        echo "  sudo paqet --update-core - Update paqet binary core"
         echo "  sudo paqet --help       - Show all options"
         echo ""
     else
@@ -291,8 +306,10 @@ generate_encryption_key() {
     
     if [ -z "$ENCRYPTION_KEY" ]; then
         # Try to use paqet's secret command if available
-        if command -v paqet &> /dev/null; then
-            ENCRYPTION_KEY=$(paqet secret 2>/dev/null)
+        local paqet_binary
+        paqet_binary=$(resolve_paqet_binary)
+        if [ -n "$paqet_binary" ]; then
+            ENCRYPTION_KEY=$("$paqet_binary" secret 2>/dev/null)
             if [ -n "$ENCRYPTION_KEY" ]; then
                 print_success "Generated key using paqet secret command"
                 return
@@ -316,26 +333,37 @@ generate_encryption_key() {
 
 # Download paqet binary
 download_paqet_binary() {
+    local force_update="${1:-false}"
     print_header "Paqet Binary Download"
-    
-    # Check if paqet already exists
-    if [ -f "$PAQET_PATH/paqet" ] && ! is_script_paqet "$PAQET_PATH/paqet"; then
-        print_success "Paqet binary already exists: $PAQET_PATH/paqet"
-        return 0
+
+    local existing_binary=""
+    existing_binary=$(resolve_paqet_binary 2>/dev/null || true)
+
+    if [ "$force_update" != "true" ]; then
+        if [ -f "$PAQET_PATH/paqet" ] && ! is_script_paqet "$PAQET_PATH/paqet"; then
+            print_success "Paqet binary already exists: $PAQET_PATH/paqet"
+            return 0
+        fi
+
+        if [ -n "$existing_binary" ]; then
+            print_success "Paqet binary found in PATH: $existing_binary"
+            return 0
+        fi
+
+        print_info "Paqet binary not found, downloading..."
+    else
+        if [ -n "$existing_binary" ]; then
+            print_info "Updating existing Paqet binary: $existing_binary"
+        else
+            print_info "No existing Paqet binary found, installing latest version"
+        fi
     fi
-    
-    if resolve_paqet_binary >/dev/null 2>&1; then
-        print_success "Paqet binary found in PATH"
-        return 0
-    fi
-    
-    print_info "Paqet binary not found, downloading..."
-    
+
     # Detect architecture
     local arch=$(uname -m)
     local os=$(uname -s | tr '[:upper:]' '[:lower:]')
     local paqet_arch=""
-    
+
     case "$arch" in
         x86_64|amd64)
             paqet_arch="amd64"
@@ -352,61 +380,70 @@ download_paqet_binary() {
         *)
             print_error "Unsupported architecture: $arch"
             print_info "Please download manually from: https://github.com/hanselime/paqet/releases"
-            exit 1
+            return 1
             ;;
     esac
-    
+
     print_info "Detected: $os-$paqet_arch"
-    
+
     # Get latest version from GitHub API
     print_info "Checking latest version..."
-    local version=""
-    if command -v curl &> /dev/null; then
-        version=$(curl -s https://api.github.com/repos/hanselime/paqet/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-    fi
-    
+    local version
+    version=$(get_latest_paqet_version)
+
     if [ -z "$version" ]; then
-        version="v1.0.0-alpha.11" # Fallback version
+        if [ "$force_update" = "true" ]; then
+            print_error "Could not fetch latest release version from GitHub API"
+            print_info "Please check internet access and try again"
+            return 1
+        fi
+        version="v1.0.0-alpha.11"
         print_warning "Could not fetch latest version, using fallback: $version"
     else
         print_info "Latest version: $version"
     fi
-    
+
     local filename="paqet-linux-${paqet_arch}-${version}.tar.gz"
     local download_url="https://github.com/hanselime/paqet/releases/download/$version/$filename"
-    
+
     print_info "Downloading from: $download_url"
-    
+
+    local temp_dir
+    temp_dir=$(mktemp -d)
+    local archive_path="$temp_dir/$filename"
+    local extract_dir="$temp_dir/extracted"
+
     # Download with curl or wget
     if command -v curl &> /dev/null; then
-        curl -L -o "/tmp/$filename" "$download_url"
+        curl -fL -o "$archive_path" "$download_url"
     elif command -v wget &> /dev/null; then
-        wget -O "/tmp/$filename" "$download_url"
+        wget -O "$archive_path" "$download_url"
     else
         print_error "Neither curl nor wget found. Please install one of them."
-        exit 1
+        rm -rf "$temp_dir"
+        return 1
     fi
-    
+
     if [ $? -ne 0 ]; then
         print_error "Download failed. Please download manually from:"
         print_info "https://github.com/hanselime/paqet/releases"
-        exit 1
+        rm -rf "$temp_dir"
+        return 1
     fi
-    
+
     print_success "Download completed"
-    
+
     # Extract binary to temporary directory
     print_info "Extracting binary..."
-    local extract_dir=$(mktemp -d)
-    tar -xzf "/tmp/$filename" -C "$extract_dir" 2>/dev/null
-    
+    mkdir -p "$extract_dir"
+    tar -xzf "$archive_path" -C "$extract_dir" 2>/dev/null
+
     if [ $? -ne 0 ]; then
         print_error "Extraction failed"
-        rm -f "/tmp/$filename"
-        rm -rf "$extract_dir"
-        exit 1
+        rm -rf "$temp_dir"
+        return 1
     fi
-    
+
     # Find the paqet binary (could be in root or subdirectory)
     local binary_path=""
     if [ -f "$extract_dir/paqet" ]; then
@@ -419,36 +456,78 @@ download_paqet_binary() {
     if [ -z "$binary_path" ] || [ ! -f "$binary_path" ]; then
         print_error "Could not find paqet binary in extracted archive"
         print_info "Archive contents:"
-        tar -tzf "/tmp/$filename" | head -20
-        rm -f "/tmp/$filename"
-        rm -rf "$extract_dir"
-        exit 1
+        tar -tzf "$archive_path" | head -20
+        rm -rf "$temp_dir"
+        return 1
     fi
-    
-    # Move binary to paqet path and rename to 'paqet'
-    mkdir -p "$PAQET_PATH"
-    cp "$binary_path" "$PAQET_PATH/paqet"
-    
+
+    # Install to existing binary path when updating, otherwise use PAQET_PATH/paqet
+    local install_target="$PAQET_PATH/paqet"
+    if [ "$force_update" = "true" ] && [ -n "$existing_binary" ]; then
+        install_target="$existing_binary"
+    fi
+
+    mkdir -p "$(dirname "$install_target")"
+    cp "$binary_path" "$install_target"
+
     if [ $? -ne 0 ]; then
-        print_error "Failed to copy binary"
-        rm -f "/tmp/$filename"
-        rm -rf "$extract_dir"
-        exit 1
+        print_error "Failed to copy binary to: $install_target"
+        rm -rf "$temp_dir"
+        return 1
     fi
-    
+
     # Make executable
-    chmod +x "$PAQET_PATH/paqet"
-    
+    chmod +x "$install_target"
+
     # Cleanup
-    rm -f "/tmp/$filename"
-    rm -rf "$extract_dir"
-    
-    if [ -f "$PAQET_PATH/paqet" ]; then
-        print_success "Paqet binary installed: $PAQET_PATH/paqet"
+    rm -rf "$temp_dir"
+
+    if [ -f "$install_target" ]; then
+        print_success "Paqet binary installed: $install_target"
         print_info "Version: $version"
+        return 0
     else
         print_error "Installation failed"
-        exit 1
+        return 1
+    fi
+}
+
+# Restart currently active paqet services after core updates
+restart_active_tunnels_after_update() {
+    local active_found=0
+
+    for service_file in /etc/systemd/system/paqet-*.service; do
+        if [ -f "$service_file" ]; then
+            local service_name
+            service_name=$(basename "$service_file" .service)
+            if systemctl is-active --quiet "$service_name"; then
+                active_found=1
+                print_info "Restarting $service_name..."
+                if systemctl restart "$service_name"; then
+                    print_success "$service_name restarted"
+                else
+                    print_warning "Failed to restart $service_name"
+                fi
+            fi
+        fi
+    done
+
+    if [ "$active_found" -eq 0 ]; then
+        print_info "No active paqet tunnels found to restart"
+    fi
+}
+
+# Force update paqet core binary to the latest release
+update_paqet_core() {
+    print_header "Updating Paqet Core"
+    check_root
+
+    if download_paqet_binary "true"; then
+        restart_active_tunnels_after_update
+        print_success "Paqet core update completed"
+    else
+        print_error "Paqet core update failed"
+        return 1
     fi
 }
 
@@ -939,41 +1018,41 @@ create_startup_script() {
         return
     fi
     
-    cat > "$script_path" << 'EOF'
+    cat > "$script_path" << EOF
 #!/bin/bash
 # Paqet Startup Script
 
-if [[ $EUID -ne 0 ]]; then
+if [[ \$EUID -ne 0 ]]; then
     echo "ERROR: This script must be run with sudo"
     exit 1
 fi
 
-MODE="$1"
-CONFIG="$2"
+MODE="\$1"
+CONFIG="\$2"
 
-if [ -z "$MODE" ] || [ -z "$CONFIG" ]; then
-    echo "Usage: $0 <client|server> <config_file>"
+if [ -z "\$MODE" ] || [ -z "\$CONFIG" ]; then
+    echo "Usage: \$0 <client|server> <config_file>"
     exit 1
 fi
 
-PAQET_PATH="$(dirname "$0")"
-PAQET_BIN="$PAQET_PATH/paqet"
+PAQET_PATH="\$(dirname "\$0")"
+PAQET_BIN="$paqet_binary"
 
-if [ ! -f "$PAQET_BIN" ]; then
-    if command -v paqet &> /dev/null; then
-        PAQET_BIN=$(which paqet)
-    else
-        echo "ERROR: paqet binary not found"
-        exit 1
-    fi
+if [ ! -x "\$PAQET_BIN" ] && [ -x "\$PAQET_PATH/paqet" ]; then
+    PAQET_BIN="\$PAQET_PATH/paqet"
 fi
 
-echo "Starting Paqet ($MODE)..."
-echo "Configuration: $CONFIG"
-echo "Binary: $PAQET_BIN"
+if [ ! -x "\$PAQET_BIN" ]; then
+    echo "ERROR: paqet binary not found"
+    exit 1
+fi
+
+echo "Starting Paqet (\$MODE)..."
+echo "Configuration: \$CONFIG"
+echo "Binary: \$PAQET_BIN"
 echo ""
 
-"$PAQET_BIN" run -c "$CONFIG"
+"\$PAQET_BIN" run -c "\$CONFIG"
 EOF
 
     chmod +x "$script_path"
@@ -987,9 +1066,9 @@ test_connectivity() {
     
     print_header "Testing Connectivity"
     
-    if command -v paqet &> /dev/null; then
-        local paqet_bin=$(which paqet)
-    else
+    local paqet_bin
+    paqet_bin=$(resolve_paqet_binary)
+    if [ -z "$paqet_bin" ]; then
         print_warning "paqet binary not found, skipping connectivity test"
         return
     fi
@@ -1244,7 +1323,7 @@ deploy_paqet() {
     install_dependencies
     
     # Download paqet binary if needed
-    download_paqet_binary
+    download_paqet_binary || exit 1
     
     # Get network details
     get_network_details
@@ -1378,7 +1457,7 @@ KCP_STREAMBUF=2097152
 # These commands are handled by handle_cli_args() at the end of the script
 if [[ $# -gt 0 ]]; then
     case "$1" in
-        --status|--list|--start-all|--stop-all|--restart-all|--monitor|--remove|--manage|--options|--reports|--logs|--errors|--optimize|--install|--uninstall|--help|-h)
+        --status|--list|--start-all|--stop-all|--restart-all|--monitor|--remove|--manage|--options|--reports|--logs|--errors|--optimize|--update-core|--update|--install|--uninstall|--help|-h)
             # Skip the deployment options parsing - let the CLI handler at the end process these
             :
             ;;
@@ -1399,7 +1478,11 @@ if [[ $# -gt 0 ]]; then
                         shift 2
                         ;;
                     --server-port)
-                        SERVER_PORT="$2"
+                        SERVER_PORT=$(normalize_port "$2")
+                        if [ -z "$SERVER_PORT" ]; then
+                            print_error "Invalid server port: $2"
+                            exit 1
+                        fi
                         shift 2
                         ;;
                     --key)
@@ -2020,7 +2103,7 @@ deploy_multi_tunnels() {
     # Check prerequisites first
     check_root
     install_dependencies
-    download_paqet_binary
+    download_paqet_binary || exit 1
     get_network_details
     
     for i in "${!TUNNEL_NAMES[@]}"; do
@@ -2218,6 +2301,7 @@ show_management_menu() {
         echo -e "  ${WHITE}7)${NC} Options (Edit tunnel settings)"
         echo -e "  ${WHITE}8)${NC} Reports (View errors/logs)"
         echo -e "  ${WHITE}9)${NC} Kernel Optimization"
+        echo -e "  ${WHITE}10)${NC} Update Paqet Core"
         echo -e "  ${WHITE}b)${NC} Back to main menu"
         echo -e "  ${WHITE}0)${NC} Exit"
         echo ""
@@ -2235,6 +2319,7 @@ show_management_menu() {
             7) show_options_menu ;;
             8) show_reports_menu ;;
             9) show_optimization_menu ;;
+            10) update_paqet_core; read -p "Press Enter to continue..." ;;
             b|B) show_main_menu; return ;;
             0) exit 0 ;;
             *) ;;
@@ -2871,6 +2956,10 @@ handle_cli_args() {
             view_all_errors
             exit 0
             ;;
+        --update-core|--update)
+            update_paqet_core
+            exit $?
+            ;;
         --install)
             check_root
             install_to_bin
@@ -2905,6 +2994,8 @@ handle_cli_args() {
             echo "  --reports, --logs   Open reports menu"
             echo "  --errors            View recent errors"
             echo "  --optimize          Apply kernel/OS optimizations for tunneling"
+            echo "  --update-core       Download and install latest paqet core binary"
+            echo "  --update            Alias for --update-core"
             echo "  --install           Install script to /usr/local/bin (run as 'paqet')"
             echo "  --uninstall         Remove script from /usr/local/bin"
             echo "  --help, -h          Show this help"
@@ -2917,7 +3008,7 @@ handle_cli_args() {
 # Check for CLI management commands first
 if [[ $# -gt 0 ]]; then
     case "$1" in
-        --status|--list|--start-all|--stop-all|--restart-all|--monitor|--remove|--manage|--options|--reports|--logs|--errors|--optimize|--install|--uninstall|--help|-h)
+        --status|--list|--start-all|--stop-all|--restart-all|--monitor|--remove|--manage|--options|--reports|--logs|--errors|--optimize|--update-core|--update|--install|--uninstall|--help|-h)
             handle_cli_args "$@"
             ;;
         --*)
