@@ -83,11 +83,11 @@ set_kcp_defaults() {
     KCP_SMUXBUF=4194304
     KCP_STREAMBUF=2097152
     if [ "$role" = "server" ]; then
+        KCP_RCVWND=4096
+        KCP_SNDWND=4096
+    else
         KCP_RCVWND=2048
         KCP_SNDWND=2048
-    else
-        KCP_RCVWND=1024
-        KCP_SNDWND=1024
     fi
 }
 
@@ -257,9 +257,9 @@ validate_forward_rules() {
         fi
     done
 
-    if [[ "$CONN_COUNT" =~ ^[0-9]+$ ]] && [ "$CONN_COUNT" -gt 3 ]; then
+    if [[ "$CONN_COUNT" =~ ^[0-9]+$ ]] && [ "$CONN_COUNT" -gt 10 ]; then
         print_warning "Connection count is $CONN_COUNT. High conn values increase bandwidth overhead."
-        print_info "Use 1-3 connections for lower bandwidth usage."
+        print_info "Use 3-5 connections for optimal performance with many users."
     fi
 
     return 0
@@ -1867,14 +1867,14 @@ FORWARD_PORTS=""  # User input format: "443=443,8443=8080"
 ENCRYPTION_KEY=""
 PAQET_PATH="."
 KCP_MODE="fast"
-CONN_COUNT="3"
+CONN_COUNT="5"
 MTU="1350"
 KCP_NODELAY=1
 KCP_INTERVAL=10
 KCP_RESEND=2
 KCP_NC=1
-KCP_RCVWND=1024
-KCP_SNDWND=1024
+KCP_RCVWND=2048
+KCP_SNDWND=2048
 KCP_SMUXBUF=4194304
 KCP_STREAMBUF=2097152
 
