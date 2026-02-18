@@ -1316,7 +1316,6 @@ WorkingDirectory=$paqet_path
 ExecStart=$paqet_binary run -c $config_file
 Restart=always
 RestartSec=10
-RuntimeMaxSec=1800
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=$service_name
