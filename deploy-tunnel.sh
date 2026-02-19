@@ -872,15 +872,6 @@ network:
   pcap:
     sockbuf: 4194304             # 4MB buffer for client
 
-  # DPI evasion (zapret-inspired anti-DPI techniques)
-  dpi:
-    fake_packet: $DPI_FAKE_PACKET  # Send decoy packets with low TTL
-    fake_ttl: $DPI_FAKE_TTL        # TTL for fake packets
-    fake_count: $DPI_FAKE_COUNT    # Fakes per real packet
-    fake_cutoff: $DPI_FAKE_CUTOFF  # Stop fakes after N packets
-    padding: $DPI_PADDING          # Random padding (MUST match server)
-    pad_max: $DPI_PAD_MAX          # Max padding bytes
-
 # Server connection settings (Kharej server)
 server:
   addr: "$SERVER_ADDRESS:$SERVER_PORT"  # Kharej paqet server address and port
@@ -963,15 +954,6 @@ network:
   # PCAP settings
   pcap:
     sockbuf: 8388608                    # 8MB buffer for server
-
-  # DPI evasion (zapret-inspired anti-DPI techniques)
-  dpi:
-    fake_packet: $DPI_FAKE_PACKET        # Send decoy packets with low TTL
-    fake_ttl: $DPI_FAKE_TTL              # TTL for fake packets
-    fake_count: $DPI_FAKE_COUNT          # Fakes per real packet
-    fake_cutoff: $DPI_FAKE_CUTOFF        # Stop fakes after N packets
-    padding: $DPI_PADDING                # Random padding (MUST match client)
-    pad_max: $DPI_PAD_MAX                # Max padding bytes
 
 # Transport protocol configuration
 transport:
@@ -1894,14 +1876,6 @@ KCP_RCVWND=2048
 KCP_SNDWND=2048
 KCP_SMUXBUF=4194304
 KCP_STREAMBUF=2097152
-
-# DPI evasion settings (zapret-inspired)
-DPI_FAKE_PACKET=false           # Send fake packets with low TTL to desync DPI
-DPI_FAKE_TTL=4                  # TTL for fake packets (3-8 typical)
-DPI_FAKE_COUNT=1                # Number of fakes per real packet
-DPI_FAKE_CUTOFF=5               # Stop fakes after N packets per flow
-DPI_PADDING=false               # Random payload padding (BOTH sides must match)
-DPI_PAD_MAX=64                  # Max padding bytes
 
 # Check for CLI management commands FIRST (before parsing deployment options)
 # These commands are handled by handle_cli_args() at the end of the script
