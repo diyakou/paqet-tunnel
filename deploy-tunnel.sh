@@ -1896,11 +1896,11 @@ KCP_SMUXBUF=4194304
 KCP_STREAMBUF=2097152
 
 # DPI evasion settings (zapret-inspired)
-DPI_FAKE_PACKET="false"         # Send fake packets with low TTL to desync DPI
+DPI_FAKE_PACKET=false           # Send fake packets with low TTL to desync DPI
 DPI_FAKE_TTL=4                  # TTL for fake packets (3-8 typical)
 DPI_FAKE_COUNT=1                # Number of fakes per real packet
 DPI_FAKE_CUTOFF=5               # Stop fakes after N packets per flow
-DPI_PADDING="false"             # Random payload padding (BOTH sides must match)
+DPI_PADDING=false               # Random payload padding (BOTH sides must match)
 DPI_PAD_MAX=64                  # Max padding bytes
 
 # Check for CLI management commands FIRST (before parsing deployment options)
