@@ -218,13 +218,22 @@ resolve_paqet_binary() {
 
 # Get latest paqet release tag from GitHub API
 get_latest_paqet_version() {
-    local api_url="https://api.github.com/repos/diyakou/paqet/releases/latest"
+    local repo="${PAQET_REPO:-diyakou/paqet}"
+    local api_url="https://api.github.com/repos/${repo}/releases/latest"
     local version=""
 
-    if command -v curl &> /dev/null; then
-        version=$(curl -fsSL "$api_url" 2>/dev/null | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
-    elif command -v wget &> /dev/null; then
-        version=$(wget -qO- "$api_url" 2>/dev/null | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+    if command -v gh &> /dev/null; then
+        if gh auth status -t -h github.com >/dev/null 2>&1; then
+            version=$(gh release view --repo "$repo" --json tagName -q .tagName 2>/dev/null | head -1)
+        fi
+    fi
+
+    if [ -z "$version" ]; then
+        if command -v curl &> /dev/null; then
+            version=$(curl -fsSL "$api_url" 2>/dev/null | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+        elif command -v wget &> /dev/null; then
+            version=$(wget -qO- "$api_url" 2>/dev/null | sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+        fi
     fi
 
     echo "$version"
@@ -718,30 +727,40 @@ download_paqet_binary() {
         print_info "Latest version: $version"
     fi
 
+    local repo="${PAQET_REPO:-diyakou/paqet}"
     local filename="paqet-linux-${paqet_arch}-${version}.tar.gz"
-    local download_url="https://github.com/diyakou/paqet/releases/download/$version/$filename"
+    local download_url="https://github.com/${repo}/releases/download/$version/$filename"
 
-    print_info "Downloading from: $download_url"
+    print_info "Release repo: $repo"
+    print_info "Downloading: $filename"
 
     local temp_dir
     temp_dir=$(mktemp -d)
     local archive_path="$temp_dir/$filename"
     local extract_dir="$temp_dir/extracted"
 
-    # Download with curl or wget
-    if command -v curl &> /dev/null; then
-        curl -fL -o "$archive_path" "$download_url"
-    elif command -v wget &> /dev/null; then
-        wget -O "$archive_path" "$download_url"
+    # Download with gh (authenticated for private repos) or curl/wget
+    if command -v gh &> /dev/null && gh auth status -t -h github.com >/dev/null 2>&1; then
+        print_info "Using GitHub CLI authentication"
+        gh release download "$version" --repo "$repo" --pattern "$filename" -D "$temp_dir" >/dev/null 2>&1
+        if [ -f "$temp_dir/$filename" ]; then
+            mv "$temp_dir/$filename" "$archive_path"
+        fi
     else
-        print_error "Neither curl nor wget found. Please install one of them."
-        rm -rf "$temp_dir"
-        return 1
+        if command -v curl &> /dev/null; then
+            curl -fL -o "$archive_path" "$download_url"
+        elif command -v wget &> /dev/null; then
+            wget -O "$archive_path" "$download_url"
+        else
+            print_error "Neither gh nor curl/wget found. Please install one of them."
+            rm -rf "$temp_dir"
+            return 1
+        fi
     fi
 
-    if [ $? -ne 0 ]; then
-        print_error "Download failed. Please download manually from:"
-        print_info "https://github.com/diyakou/paqet/releases"
+    if [ ! -f "$archive_path" ]; then
+        print_error "Download failed. If the repo is private, run: gh auth login"
+        print_info "Manual download: https://github.com/${repo}/releases"
         rm -rf "$temp_dir"
         return 1
     fi
@@ -1919,6 +1938,7 @@ FORWARD_RULES=""  # Semicolon-separated: "local:target_host:target_port[:protoco
 FORWARD_PORTS=""  # User input format: "443=443,8443=8080"
 ENCRYPTION_KEY=""
 PAQET_PATH="."
+PAQET_REPO="diyakou/paqet"
 KCP_MODE="fast2"
 CONN_COUNT="3"
 MTU="1280"
