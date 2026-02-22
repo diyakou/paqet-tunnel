@@ -1,89 +1,170 @@
-# Paqet Tunnel Deployment Script
+﻿# اسکریپت نصب و مدیریت KYPAQET
 
-Don't forget to star this repository! ⭐
- 
-A simple, automated script to deploy a direct tunnel between Iran (Client) and Kharej/External (Server) using **paqet** in **KCP** mode.
+این پروژه یک اسکریپت Bash برای نصب، کانفیگ و مدیریت تانل `paqet` است.
+سناریوی اصلی:
+- **Server (خارج)**: دریافت اتصال از ایران
+- **Client (ایران)**: اتصال به سرور خارج و ارائه SOCKS5 یا Port Forward
 
-## 🚀 Quick Install (Linux)
+---
 
-Run the following command on both your **Iranian** and **External** servers:
+## پیش‌نیازها
+
+- سیستم‌عامل لینوکس (Ubuntu / Debian / CentOS / RHEL / Rocky / Alma / Arch)
+- دسترسی `root` یا `sudo`
+- باز بودن پورت سرویس روی سرور خارج
+- نصب بودن `curl` یا `wget` (در صورت نبود، اسکریپت تلاش می‌کند نصب کند)
+
+نکته:
+- اسکریپت باینری را از ریپوی اصلی دانلود می‌کند: `https://github.com/diyakou/paqet`
+
+---
+
+## نصب سریع
+
+روی **هر دو سرور (ایران و خارج)** اجرا کنید:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/diyakou/paqet-tunnel/master/deploy-tunnel.sh -o deploy.sh && chmod +x deploy.sh && sudo ./deploy.sh
 ```
 
-### Optional: Install as System Command
+---
 
-After running the script once, you can install it globally to use the `paqet` command anywhere:
+## آموزش کامل نصب (مرحله‌به‌مرحله)
+
+## 1) نصب سمت خارج (Server)
+
+1. اسکریپت را اجرا کنید:
+
+```bash
+sudo ./deploy.sh
+```
+
+2. در منو گزینه `Single Tunnel` را انتخاب کنید.
+3. نقش را `server` انتخاب کنید.
+4. اطلاعات شبکه را طبق سرور وارد کنید:
+- `interface` (مثل `eth0` یا `ens3`)
+- `listen port` (مثلا `9999`)
+- `router mac` (در صورت نیاز)
+5. کلید رمزنگاری را ذخیره کنید (یا کلید دلخواه خودتان را وارد کنید).
+6. پس از پایان، اسکریپت:
+- فایل کانفیگ می‌سازد
+- Ruleهای فایروال لازم را اعمال می‌کند
+- سرویس systemd می‌سازد و اجرا می‌کند
+
+بررسی وضعیت سرویس:
+
+```bash
+sudo systemctl status paqet-server
+```
+
+(اگر نام سرویس سفارشی باشد، از `sudo ./deploy.sh --status` استفاده کنید.)
+
+---
+
+## 2) نصب سمت ایران (Client)
+
+1. اسکریپت را اجرا کنید:
+
+```bash
+sudo ./deploy.sh
+```
+
+2. گزینه `Single Tunnel` را انتخاب کنید.
+3. نقش را `client` انتخاب کنید.
+4. اطلاعات زیر را وارد کنید:
+- IP یا دامنه سرور خارج
+- پورت سرور خارج
+- **همان کلید رمزنگاری** که روی سرور تنظیم شده
+5. نوع خروجی را انتخاب کنید:
+- `SOCKS5` (پیش‌فرض: `127.0.0.1:1080`)
+- یا `Port Forward`
+6. در پایان سرویس ساخته و اجرا می‌شود.
+
+بررسی وضعیت:
+
+```bash
+sudo systemctl status paqet-client
+```
+
+(یا از `sudo ./deploy.sh --status` برای لیست کامل سرویس‌ها استفاده کنید.)
+
+---
+
+## تست اتصال
+
+اگر روی کلاینت خروجی SOCKS5 دارید:
+
+```bash
+curl -v https://httpbin.org/ip --proxy socks5h://127.0.0.1:1080
+```
+
+اگر IP خروجی، IP سرور خارج بود یعنی تانل درست کار می‌کند.
+
+---
+
+## دستورات مدیریت
+
+پس از نصب می‌توانید اسکریپت را به‌صورت سراسری نصب کنید:
 
 ```bash
 sudo ./deploy.sh --install
 ```
 
-Now you can simply run:
+سپس:
 
 ```bash
-sudo paqet              # Open main menu
-sudo paqet --status     # List all tunnels
-sudo paqet --manage     # Open management menu
-sudo paqet --update-core # Update paqet core to latest release
-sudo paqet --help       # Show all options
+sudo paqet --status
+sudo paqet --manage
+sudo paqet --logs
+sudo paqet --errors
+sudo paqet --restart-all
+sudo paqet --stop-all
+sudo paqet --start-all
+sudo paqet --update-core
 ```
 
-To uninstall: `sudo paqet --uninstall`
+حذف اسکریپت سراسری:
 
-## ✨ What This Script Does
+```bash
+sudo paqet --uninstall
+```
 
-1.  **Auto-Detects Architecture**: Automatically checks your CPU architecture (AMD64, ARM64, etc.) to download the correct binary.
-2.  **Downloads Latest Paqet**: Fetches the latest release of `paqet` directly from its official repository.
-3.  **Encrypted Tunneling**:
-    - Generates or accepts an **Encryption Key** to secure the connection.
-    - Uses **KCP protocol** over raw TCP to bypass firewall restrictions and interruptions.
-4.  **Flexible Configuration**:
-    - **Modes**: Sets up either a **Server** (Kharej) or a **Client** (Iran).
-    - **Performance Tuning**: Allows selecting KCP modes (`fast`, `fast2`, `fast3`) and number of parallel connections for optimized speed.
-    - **Proxy Options**:
-      - **SOCKS5 Proxy**: Creates a standard SOCKS5 proxy on `127.0.0.1:1080`.
-      - **Port Forwarding**: Directly forwards a local port to a remote destination (e.g., forwarding local `8080` to `google.com:80`).
-5.  **Service Management**: Creates a `systemd` service so the tunnel runs automatically in the background and restarts on boot.
-6.  **Firewall Configuration**: Automatically applies `iptables` rules to ensure traffic flows correctly without kernel interference.
+---
 
-## ⚙️ How to Use
+## تنظیمات پیشنهادی برای پایداری
 
-1.  **Run the script** on your External (Kharej) server first.
-    - Select **Server** mode.
-    - Note the **Encryption Key** generated (or provide your own).
-    - Note the **Port** used.
+- KCP mode: `fast2`
+- تعداد کانکشن: `3`
+- Window پیش‌فرض:
+- Client: `2048`
+- Server: `4096`
+- MTU پیشنهادی:
+- لینک پایدار: `1280` تا `1350`
+- لینک محدود/ناپایدار: `1200` تا `1280`
 
-2.  **Run the script** on your Internal (Iran) client machine.
-    - Select **Client** mode.
-    - Enter the IP address and Port of your External server.
-    - Enter the **SAME Encryption Key** used on the server.
-    - Choose your connection settings (Proxy type, Connection count, KCP mode).
+---
 
-3.  **Enjoy!**
-    - If you chose **SOCKS5**, configure your browser or apps to use `127.0.0.1:1080` as the proxy.
-    - If you chose **Port Forwarding**, connect to your specified local port.
+## عیب‌یابی سریع
 
-## 💖 Donate
+1. سرویس بالا نمی‌آید:
 
-If you find this project useful, consider supporting its development:
+```bash
+sudo journalctl -u paqet-client -n 100 --no-pager
+sudo journalctl -u paqet-server -n 100 --no-pager
+```
 
-| Currency | Network      | Address                                        |
-| -------- | ------------ | ---------------------------------------------- |
-| **USDT** | BEP-20 (BSC) | `0xd729ad31f2709696fd0a368cfa00ecd99bc483d2`   |
-| **USDC** | Solana       | `4KWuoheDU5ki1NfTuUyPfAi3cfatREtZ8UV4eZUrKWfX` |
+2. قطع و وصل دوره‌ای دارید:
+- MTU را پایین‌تر تنظیم کنید (مثلا `1240`)
+- تعداد کانکشن را خیلی بالا نبرید
+- Ruleهای فایروال را دوباره اعمال کنید
 
-Thank you for your support! 🙏
+3. اتصال برقرار نمی‌شود:
+- کلید رمزنگاری دو سمت باید یکسان باشد
+- IP/Port صحیح باشد
+- Security Group / Firewall سرور پورت را باز کرده باشد
 
-## 📚 Credits & Sources
+---
 
-- **Paqet** - The core tunneling binary  
-  🔗 [hanselime/paqet](https://github.com/hanselime/paqet)
+## لایسنس
 
-- **KCP Protocol** - Fast and reliable ARQ protocol  
-  🔗 [skywind3000/kcp](https://github.com/skywind3000/kcp)
-
-## 📄 License
-
-This deployment script is provided as-is for educational and personal use.
+این اسکریپت برای استفاده عملیاتی و شخصی ارائه شده است.

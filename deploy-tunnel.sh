@@ -73,6 +73,19 @@ print_info() {
     echo -e "${BLUE}${ICON_INFO}  $1${NC}"
 }
 
+render_kypaqet_banner() {
+    echo -e "${CYAN}"
+    ui_line "=" 68
+    echo -e "${WHITE} _  ___   __   _____  ___   ___ _____${NC}"
+    echo -e "${WHITE}| |/ / | / /  / / _ \\/ _ | / _ \\_   _|${NC}"
+    echo -e "${WHITE}| ' /| |/ /  / / ___/ __ |/ // / | |${NC}"
+    echo -e "${WHITE}|_|\\_\\|___/  /_/_/  /_/ |_|____/  |_|${NC}"
+    echo -e "${GREEN}KYPAQET${NC}"
+    echo -e "${YELLOW}telegram : Exchi${NC}"
+    ui_line "=" 68
+    echo -e "${NC}"
+}
+
 # KCP manual preset defaults (role-aware)
 set_kcp_defaults() {
     local role="$1"
@@ -83,11 +96,11 @@ set_kcp_defaults() {
     KCP_SMUXBUF=4194304
     KCP_STREAMBUF=2097152
     if [ "$role" = "server" ]; then
+        KCP_RCVWND=4096
+        KCP_SNDWND=4096
+    else
         KCP_RCVWND=2048
         KCP_SNDWND=2048
-    else
-        KCP_RCVWND=1024
-        KCP_SNDWND=1024
     fi
 }
 
@@ -103,11 +116,11 @@ apply_kcp_mode_defaults() {
             KCP_RESEND=2
             KCP_NC=1
             if [ "$role" = "server" ]; then
+                KCP_RCVWND=4096
+                KCP_SNDWND=4096
+            else
                 KCP_RCVWND=2048
                 KCP_SNDWND=2048
-            else
-                KCP_RCVWND=1024
-                KCP_SNDWND=1024
             fi
             KCP_SMUXBUF=4194304
             KCP_STREAMBUF=2097152
@@ -133,11 +146,11 @@ apply_kcp_mode_defaults() {
             KCP_RESEND=2
             KCP_NC=1
             if [ "$role" = "server" ]; then
+                KCP_RCVWND=4096
+                KCP_SNDWND=4096
+            else
                 KCP_RCVWND=2048
                 KCP_SNDWND=2048
-            else
-                KCP_RCVWND=1024
-                KCP_SNDWND=1024
             fi
             KCP_SMUXBUF=4194304
             KCP_STREAMBUF=2097152
@@ -218,7 +231,7 @@ resolve_paqet_binary() {
 
 # Get latest paqet release tag from GitHub API
 get_latest_paqet_version() {
-    local repo="${PAQET_REPO:-diyakou/paqet}"
+    local repo="diyakou/paqet"
     local api_url="https://api.github.com/repos/${repo}/releases/latest"
     local version=""
 
@@ -727,7 +740,7 @@ download_paqet_binary() {
         print_info "Latest version: $version"
     fi
 
-    local repo="${PAQET_REPO:-diyakou/paqet}"
+    local repo="diyakou/paqet"
     local filename="paqet-linux-${paqet_arch}-${version}.tar.gz"
     local download_url="https://github.com/${repo}/releases/download/$version/$filename"
 
@@ -1946,8 +1959,8 @@ KCP_NODELAY=1
 KCP_INTERVAL=20
 KCP_RESEND=2
 KCP_NC=1
-KCP_RCVWND=1024
-KCP_SNDWND=1024
+KCP_RCVWND=2048
+KCP_SNDWND=2048
 KCP_SMUXBUF=4194304
 KCP_STREAMBUF=2097152
 CLIENT_PCAP_SOCKBUF="4194304"
@@ -2707,9 +2720,10 @@ deploy_multi_tunnels() {
 # Main menu
 show_main_menu() {
     echo ""
+    render_kypaqet_banner
     echo -e "${CYAN}"
     ui_line "═" 60
-    echo -e "${WHITE}${ICON_DEPLOY}  Paqet Direct Tunnel Deployment Wizard${NC}"
+    echo -e "${WHITE}${ICON_DEPLOY}  KYPAQET Installer${NC}"
     echo -e "${CYAN}"
     ui_line "═" 60
     echo -e "${NC}"
