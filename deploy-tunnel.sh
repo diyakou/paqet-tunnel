@@ -1307,20 +1307,11 @@ create_client_config() {
     local config_file="$1"
     
     print_header "Creating Client Configuration (Iran - Direct Tunnel)"
-
-    if [ -z "${LICENSE_KEY:-}" ]; then
-        read -p "Enter license key: " LICENSE_KEY
-    fi
     
     cat > "$config_file" << EOF
 # Paqet Client Configuration - Iran (Direct Tunnel)
 # This client connects to the Kharej server
 role: "client"
-
-# License (required)
-license:
-    key: "${LICENSE_KEY}"
-    url: "http://paqet.morvism.ir:8080"
 
 # Logging configuration
 log:
@@ -1442,20 +1433,11 @@ create_server_config() {
     local config_file="$1"
     
     print_header "Creating Server Configuration (Kharej - Direct Tunnel)"
-
-    if [ -z "${LICENSE_KEY:-}" ]; then
-        read -p "Enter license key: " LICENSE_KEY
-    fi
     
     cat > "$config_file" << EOF
 # Paqet Server Configuration - Kharej (Direct Tunnel)
 # This server accepts connections from Iran client
 role: "server"
-
-# License (required)
-license:
-    key: "${LICENSE_KEY}"
-    url: "http://paqet-server.morvism.ir:8080"
 
 # Logging configuration
 log:
