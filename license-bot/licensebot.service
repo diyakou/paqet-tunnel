@@ -1,0 +1,23 @@
+[Unit]
+Description=KYPAQET License Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=licensebot
+Group=licensebot
+WorkingDirectory=/opt/licensebot
+ExecStart=/opt/licensebot/licensebot
+Restart=always
+RestartSec=2
+
+# Environment
+EnvironmentFile=/opt/licensebot/licensebot.env
+
+# Hardening (minimal)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
