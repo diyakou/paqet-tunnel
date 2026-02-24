@@ -484,6 +484,171 @@ apply_smart_profile_to_existing_config() {
     return 0
 }
 
+license_url_for_role() {
+    local role="$1"
+    if [ "$role" = "server" ]; then
+        echo "http://paqet-server.morvism.ir:8080"
+    else
+        echo "http://paqet.morvism.ir:8080"
+    fi
+}
+
+config_has_valid_license_key() {
+    local config_file="$1"
+    awk '
+        BEGIN { in=0; ok=0 }
+        /^license:[[:space:]]*$/ { in=1; next }
+        in==1 && /^[^[:space:]]/ { in=0 }
+        in==1 && /^[[:space:]]*key:[[:space:]]*"/ {
+            if (match($0, /"([^"]+)"/, m)) {
+                if (length(m[1]) > 0 && index(m[1], "XXXX") == 0) ok=1
+            }
+        }
+        END { exit ok ? 0 : 1 }
+    ' "$config_file"
+}
+
+ensure_license_key_prompted() {
+    if [ -z "${LICENSE_KEY:-}" ]; then
+        read -p "Enter license key: " LICENSE_KEY
+        LICENSE_KEY=$(echo "$LICENSE_KEY" | tr -d '[:space:]')
+    fi
+}
+
+ensure_license_in_config_file() {
+    local config_file="$1"
+    local role="$2"
+
+    [ -f "$config_file" ] || return 0
+
+    if config_has_valid_license_key "$config_file"; then
+        return 0
+    fi
+
+    ensure_license_key_prompted
+    local lic_url
+    lic_url=$(license_url_for_role "$role")
+
+    local tmp
+    tmp=$(mktemp)
+
+    awk -v key="$LICENSE_KEY" -v url="$lic_url" '
+        function print_license_block() {
+            print ""
+            print "# License (required)"
+            print "license:"
+            print "  key: \"" key "\""
+            print "  url: \"" url "\""
+            print ""
+        }
+
+        BEGIN { inLic=0; inserted=0; sawLic=0; hasKey=0; hasURL=0 }
+
+        /^role:[[:space:]]*"(client|server)"[[:space:]]*$/ {
+            print
+            if (inserted == 0) {
+                # Insert license block right after role if missing.
+                # If file already has license block later, we will just edit it.
+                inserted = 1
+                # defer printing license until we know there is no license block
+            }
+            next
+        }
+
+        /^license:[[:space:]]*$/ {
+            if (inserted == 1) {
+                # If we deferred license insertion, cancel it.
+                inserted = 2
+            }
+            sawLic=1
+            inLic=1
+            hasKey=0
+            hasURL=0
+            print
+            next
+        }
+
+        inLic==1 {
+            # End of license block when a new top-level key starts
+            if ($0 ~ /^[^[:space:]]/ && $0 !~ /^#/ ) {
+                if (hasKey==0) print "  key: \"" key "\""
+                if (hasURL==0) print "  url: \"" url "\""
+                inLic=0
+            }
+        }
+
+        inLic==1 && /^[[:space:]]*key:[[:space:]]*/ {
+            print "  key: \"" key "\""
+            hasKey=1
+            next
+        }
+        inLic==1 && /^[[:space:]]*url:[[:space:]]*/ {
+            print "  url: \"" url "\""
+            hasURL=1
+            next
+        }
+
+        { print }
+
+        END {
+            # If license block exists and file ended inside it
+            if (inLic==1) {
+                if (hasKey==0) print "  key: \"" key "\""
+                if (hasURL==0) print "  url: \"" url "\""
+            }
+        }
+    ' "$config_file" > "$tmp"
+
+    # If no license block existed, insert after role (at top). Simple second pass.
+    if ! grep -qE '^[[:space:]]*license:[[:space:]]*$' "$tmp"; then
+        local tmp2
+        tmp2=$(mktemp)
+        awk -v key="$LICENSE_KEY" -v url="$lic_url" '
+            function print_license_block() {
+                print ""
+                print "# License (required)"
+                print "license:"
+                print "  key: \"" key "\""
+                print "  url: \"" url "\""
+                print ""
+            }
+            BEGIN { done=0 }
+            /^role:[[:space:]]*"(client|server)"[[:space:]]*$/ {
+                print
+                if (done==0) { print_license_block(); done=1 }
+                next
+            }
+            { print }
+        ' "$tmp" > "$tmp2"
+        mv "$tmp2" "$tmp"
+    fi
+
+    cat "$tmp" > "$config_file"
+    rm -f "$tmp"
+    chmod 600 "$config_file" 2>/dev/null || true
+    print_info "Updated license section in $config_file"
+}
+
+ensure_license_for_existing_tunnels() {
+    local service_file=""
+    for service_file in /etc/systemd/system/paqet-*.service; do
+        [ -f "$service_file" ] || continue
+
+        local config_file
+        local role
+        config_file=$(resolve_service_config_path "$service_file")
+        [ -n "$config_file" ] && [ -f "$config_file" ] || continue
+
+        if grep -q 'role:[[:space:]]*"server"' "$config_file"; then
+            role="server"
+        else
+            role="client"
+        fi
+
+        ensure_license_in_config_file "$config_file" "$role"
+    done
+}
+
 retune_existing_tunnels_interactive() {
     local response=""
     read -p "Retune existing tunnel configs based on max online users? (yes/no, default: yes): " response
@@ -512,6 +677,8 @@ retune_existing_tunnels_interactive() {
         else
             role="client"
         fi
+
+        ensure_license_in_config_file "$config_file" "$role"
 
         if apply_smart_profile_to_existing_config "$config_file" "$role"; then
             print_success "Retuned $service_name ($role) -> $config_file"
@@ -589,6 +756,7 @@ run_selected_system_actions() {
     fi
 
     if [ "$APPLY_KERNEL_UPGRADE" = "yes" ]; then
+        ensure_license_for_existing_tunnels
         run_kernel_upgrade
     fi
 }
